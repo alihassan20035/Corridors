@@ -31,6 +31,11 @@ const ROOT = __dirname;
 const SEAT_HOLD_MS = 10 * 60 * 1000;   // keep a disconnected player's seat this long
 const EMPTY_ROOM_MS = 30 * 60 * 1000;  // delete rooms nobody has joined after this long
 const MAX_ROOMS = 5000;
+const CHAT_MAX_LEN = 120;
+const CHAT_BURST = 5;                  // at most 5 chat messages…
+const CHAT_WINDOW_MS = 5000;           // …in any 5-second window
+// Emoji reactions the client offers. Anything else is refused.
+const EMOJIS = new Set(['👍', '😂', '😮', '😡', '🔥', '❤️', '👏', '😎']);
 
 /* ------------------------------------------------------------ static files */
 // Only these files are public. server.js, package.json, node_modules and
@@ -139,6 +144,7 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {
   ws.isAlive = true;
+  ws.chatTimes = [];
   ws.room = null;   // Room
   ws.seat = -1;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -245,6 +251,30 @@ wss.on('connection', (ws) => {
           room.send(1 - ws.seat, { t: 'notice', kind: 'rematch-offer', name: room.seats[ws.seat].name });
           room.send(ws.seat, { t: 'notice', kind: 'rematch-wait' });
         }
+        break;
+      }
+
+      case 'chat':
+      case 'emoji': {
+        const room = ws.room;
+        if (!room) return fail('noroom', 'You’re not in a game.');
+        if (!room.seats[0] || !room.seats[1]) return fail('wait', 'Your friend hasn’t joined yet.');
+        const now = Date.now();
+        ws.chatTimes = ws.chatTimes.filter(t => now - t < CHAT_WINDOW_MS);
+        if (ws.chatTimes.length >= CHAT_BURST) return fail('slow', 'Slow down a little before sending more messages.');
+        let out;
+        if (msg.t === 'emoji') {
+          if (!EMOJIS.has(msg.e)) return fail('bad', 'Unknown emoji.');
+          out = { t: 'chat', kind: 'emoji', text: msg.e };
+        } else {
+          const text = String(msg.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          if ([...text].length > CHAT_MAX_LEN) return fail('long', `Messages can be up to ${CHAT_MAX_LEN} characters.`);
+          out = { t: 'chat', kind: 'text', text };
+        }
+        ws.chatTimes.push(now);
+        room.chatSeq = (room.chatSeq || 0) + 1;
+        room.broadcast({ ...out, by: ws.seat, name: room.seats[ws.seat].name, id: room.chatSeq, ts: now });
         break;
       }
 

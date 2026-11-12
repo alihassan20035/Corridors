@@ -1,6 +1,6 @@
 {
   "name": "corridors",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Corridors: Quoridor-style strategy game with AI, local and online multiplayer",
   "main": "server.js",
   "scripts": {

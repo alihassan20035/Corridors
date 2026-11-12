@@ -45,8 +45,12 @@ const is = (type, extra = () => true) => (m) => m.t === type && extra(m);
   const A = client(url), B = client(url), C = client(url);
   await Promise.all([A.ready, B.ready, C.ready]);
 
+  A.send({ t: 'chat', text: 'hello' });
+  t('chat outside room refused', (await A.next(is('error'))).code === 'noroom');
   A.send({ t: 'create', name: 'Ali' });
   const created = await A.next(is('created'));
+  A.send({ t: 'chat', text: 'anyone?' });
+  t('chat before friend joins refused', (await A.next(is('error'))).code === 'wait');
   t('5-digit room id', /^[1-9]\d{4}$/.test(created.room));
   const s0 = await A.next(is('state'));
   t('waiting state', s0.ready === false && s0.you === 0);
@@ -86,6 +90,26 @@ const is = (type, extra = () => true) => (m) => m.t === type && extra(m);
   A.send({ t: 'action', action: { type: 'wall', r: 6, c: 4, o: 'h' } });
   t('overlap rejected', (await A.next(is('error'))).code === 'illegal');
   A.drain();
+
+  // Chat and emoji
+  A.drain(); B.drain();
+  A.send({ t: 'chat', text: '  Nice   move!\n ' });
+  const ca = await A.next(is('chat')), cb = await B.next(is('chat'));
+  t('chat reaches both', ca.text === 'Nice move!' && cb.text === 'Nice move!' && cb.by === 0 && cb.name === 'Ali' && cb.kind === 'text');
+  B.send({ t: 'emoji', e: '🔥' });
+  const ea2 = await A.next(is('chat'));
+  t('emoji reaches friend', ea2.kind === 'emoji' && ea2.text === '🔥' && ea2.by === 1);
+  await B.next(is('chat'));
+  B.send({ t: 'emoji', e: '💩' });
+  t('unknown emoji refused', (await B.next(is('error'))).code === 'bad');
+  A.send({ t: 'chat', text: 'x'.repeat(121) });
+  t('long message refused', (await A.next(is('error'))).code === 'long');
+  A.send({ t: 'chat', text: '<img src=x onerror=alert(1)>' });
+  t('html kept as plain text', (await B.next(is('chat'))).text === '<img src=x onerror=alert(1)>');
+  for (let i = 0; i < 6; i++) A.send({ t: 'chat', text: 'spam ' + i });
+  t('rate limit kicks in', (await A.next(is('error', m => m.code === 'slow'))).code === 'slow');
+  await new Promise(r => setTimeout(r, 300));
+  A.drain(); B.drain();
 
   // Disconnect and rejoin with token
   B.ws.terminate();

@@ -45,6 +45,7 @@ Open http://localhost:3000. To put it on the internet, follow **DEPLOY.md** (AWS
 
 - **Play against the computer** (you are Red) with Easy, Medium and Hard levels, or **play with a friend** on one device.
 - **Play a friend online:** create a room, share the random 5-digit code, and both screens update live. Moves are checked on the server, dropped connections rejoin automatically (seat held 10 minutes), and both players can agree to a rematch.
+- **Online chat:** type messages, tap quick messages (Nice move!, Good game, Rematch?…) or send emoji reactions that pop up over your pawn. Unread badge and message preview on phones, chat sound with its own mute button. Messages are limited to 120 characters, rate-limited on the server, shown as plain text only, and never saved.
 - Dashboard: turn indicator, walls left (number and bar), mode, difficulty, match timer, move counter.
 - Undo (in AI mode it rewinds to your previous turn), restart with confirmation, return to menu, sound toggle, light/dark theme.
 - Highlighted legal moves, last move marker, animated pawns (with a hop on jumps), dropping walls, victory confetti.
@@ -84,5 +85,5 @@ tests/          Node tests for rules, AI and the online server
 ```bash
 node tests/rules.test.js   # 44 rule checks: moves, jumps, diagonals, walls, overlap, sealing, wins, undo, AI legality
 node tests/selfplay.js 10  # AI-vs-AI tournament across difficulties
-node tests/online.test.js  # 29 server checks: room codes, joining, turn order, cheating attempts, reconnect, rematch, file privacy
+node tests/online.test.js  # 37 server checks: room codes, joining, turn order, cheating attempts, chat limits, reconnect, rematch, file privacy
 ```

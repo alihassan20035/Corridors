@@ -31,7 +31,7 @@
   ];
 
   const prefs = Object.assign({
-    theme: 'system', sound: true, hints: false,
+    theme: 'system', sound: true, hints: false, chatMute: false,
     names: ['', ''], colors: ['#d62839', '#1d63d8'], level: 'medium',
   }, store.get('prefs', {}));
   const savePrefs = () => store.set('prefs', prefs);
@@ -47,7 +47,7 @@
   const Sound = {
     files: {
       move: 'assets/sounds/move.wav', wall: 'assets/sounds/wall.wav', win: 'assets/sounds/win.wav',
-      invalid: 'assets/sounds/invalid.wav', click: 'assets/sounds/click.wav',
+      invalid: 'assets/sounds/invalid.wav', click: 'assets/sounds/click.wav', chat: 'assets/sounds/chat.wav',
     },
     pool: {},
     ctx: null,
@@ -73,7 +73,7 @@
       try {
         this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
         const ctx = this.ctx, t = ctx.currentTime;
-        const tones = { move: [[420, .08]], wall: [[160, .12]], invalid: [[150, .1], [150, .1]], click: [[1200, .03]], win: [[523, .15], [659, .15], [784, .15], [1046, .3]] }[name] || [];
+        const tones = { move: [[420, .08]], wall: [[160, .12]], invalid: [[150, .1], [150, .1]], click: [[1200, .03]], chat: [[1318, .1], [1760, .15]], win: [[523, .15], [659, .15], [784, .15], [1046, .3]] }[name] || [];
         let at = t;
         for (const [f, d] of tones) {
           const o = ctx.createOscillator(), g = ctx.createGain();
@@ -371,6 +371,7 @@
     el.undo.disabled = finished || history.length === 0 || (mode === 'ai' && !history.some(s => s.turn === 0));
     el.undo.hidden = mode === 'online';
     el.restart.hidden = mode === 'online';
+    renderChatChrome();
   }
 
   /* ============================================================ turn flow */
@@ -572,6 +573,7 @@
   el.undo.addEventListener('click', undo);
 
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.game.classList.contains('chat-open') && el.overlay.hidden) { closeChat(); return; }
     if (!el.overlay.hidden) {
       if (e.key === 'Escape') { const d = currentDialog(); if (d && d.id !== 'dlg-win' && d.id !== 'dlg-lobby') closeDialog(false); }
       return;
@@ -773,6 +775,7 @@
   /** Load a full position from the server (join, reconnect, rematch). */
   function applyServerState(msg) {
     const wasFinished = finished;
+    if (chat.room !== msg.room) { clearChat(); chat.room = msg.room; }
     online.me = msg.you; online.room = msg.room;
     online.names = msg.names; online.connected = msg.connected; online.ready = msg.ready;
     online.sending = false;
@@ -838,7 +841,13 @@
         act(msg.action, { remote: true });
         break;
       }
+      case 'chat':
+        onChat(msg);
+        break;
       case 'notice':
+        if (msg.kind === 'away') chatSys(`${msg.name} lost connection`);
+        else if (msg.kind === 'back') chatSys(`${msg.name} is back`);
+        else if (msg.kind === 'rematch') chatSys('New game started');
         if (msg.kind === 'away') toast(`${msg.name} lost connection. Waiting for them to come back…`);
         else if (msg.kind === 'back') toast(`${msg.name} is back.`);
         else if (msg.kind === 'rematch-offer') {
@@ -871,6 +880,7 @@
   }
 
   function resetOnline() {
+    clearChat(); chat.room = null; closeChat();
     if (online.conn) { online.conn.close(); online.conn = null; }
     Object.assign(online, { me: -1, room: null, ready: false, sending: false, net: 'idle', lobby: false, rematchSent: false, connected: [false, false] });
   }
@@ -883,6 +893,162 @@
     if (mode === 'online') mode = 'friend';
     el.game.hidden = true; el.menu.hidden = false;
     renderMenu();
+  }
+
+  /* ================================================================== chat */
+  // Online only. Text and emoji go through the server, which checks length,
+  // the emoji list and a rate limit, then sends them to both players.
+  const QUICK_MESSAGES = ['Nice move!', 'Good game', 'Your turn!', 'Hurry up!', 'Wow!', 'Rematch?', 'Thinking…', 'Oops!'];
+  const CHAT_EMOJIS = ['👍', '😂', '😮', '😡', '🔥', '❤️', '👏', '😎'];
+  const chat = { room: null, unread: 0, count: 0 };
+  const ch = {
+    panel: $('chat'), log: $('chat-log'), quick: $('chat-quick'), emojis: $('chat-emojis'),
+    form: $('chat-form'), input: $('chat-input'), send: $('chat-send'), mute: $('chat-mute'),
+    close: $('chat-close'), fab: $('chat-fab'), badge: $('chat-badge'),
+  };
+  const phoneLayout = () => window.matchMedia('(max-width: 900px)').matches;
+  const chatOpen = () => el.game.classList.contains('chat-open');
+  const chatVisible = () => !ch.panel.hidden && !el.game.hidden && (!phoneLayout() || chatOpen());
+  const canChat = () => mode === 'online' && online.ready && online.net === 'open';
+
+  for (const text of QUICK_MESSAGES) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip-btn'; b.textContent = text;
+    b.addEventListener('click', () => sendChat(text));
+    ch.quick.appendChild(b);
+  }
+  for (const e of CHAT_EMOJIS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'emoji-btn'; b.textContent = e;
+    b.setAttribute('aria-label', 'Send ' + e);
+    b.addEventListener('click', () => sendEmoji(e));
+    ch.emojis.appendChild(b);
+  }
+
+  /** Show or hide the chat panel, floating button and badge for the current state. */
+  function renderChatChrome() {
+    const on = mode === 'online' && online.ready && !el.game.hidden;
+    ch.panel.hidden = !on;
+    el.game.classList.toggle('has-chat', on);
+    document.querySelector('.table').classList.toggle('has-chat', on);
+    if (!on) el.game.classList.remove('chat-open');
+    ch.fab.hidden = !on || !phoneLayout() || chatOpen();
+    if (chatVisible() && chat.unread) chat.unread = 0;
+    ch.badge.hidden = chat.unread === 0;
+    ch.badge.textContent = chat.unread > 9 ? '9+' : String(chat.unread);
+    ch.fab.setAttribute('aria-label', chat.unread ? `Open chat, ${chat.unread} new` : 'Open chat');
+    const ok = canChat();
+    for (const b of ch.panel.querySelectorAll('button.chip-btn, button.emoji-btn, .chat-send')) b.disabled = !ok;
+    ch.input.disabled = !ok;
+    ch.input.placeholder = ok ? 'Type a message…' : 'Reconnecting…';
+    ch.mute.setAttribute('aria-pressed', prefs.chatMute);
+    ch.mute.setAttribute('aria-label', prefs.chatMute ? 'Turn chat sounds on' : 'Mute chat sounds');
+    if (!chat.count && !ch.log.querySelector('.chat-empty')) {
+      const li = document.createElement('li');
+      li.className = 'chat-empty';
+      li.textContent = 'Say hi, or tap a quick message below.';
+      ch.log.appendChild(li);
+    }
+  }
+
+  function openChat() {
+    el.game.classList.add('chat-open');
+    chat.unread = 0;
+    renderChatChrome();
+    scrollChat();
+  }
+  function closeChat() {
+    el.game.classList.remove('chat-open');
+    if (!el.game.hidden) renderChatChrome();
+  }
+  ch.fab.addEventListener('click', () => { Sound.play('click'); openChat(); });
+  ch.close.addEventListener('click', closeChat);
+  ch.mute.addEventListener('click', () => { prefs.chatMute = !prefs.chatMute; savePrefs(); renderChatChrome(); });
+  window.addEventListener('resize', () => { if (!el.game.hidden) renderChatChrome(); });
+  // Tap on the board area closes the phone chat sheet.
+  el.grid.addEventListener('pointerdown', () => { if (chatOpen()) closeChat(); });
+
+  ch.form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = ch.input.value.trim();
+    if (!text) { ch.input.focus(); return; }
+    if (sendChat(text)) ch.input.value = '';
+  });
+
+  function sendChat(text) {
+    if (!canChat()) { toast('Chat is available once you’re connected to your friend.'); return false; }
+    online.conn.send({ t: 'chat', text: text.slice(0, 120) });
+    return true;
+  }
+  function sendEmoji(e) {
+    if (!canChat()) { toast('Chat is available once you’re connected to your friend.'); return; }
+    online.conn.send({ t: 'emoji', e });
+  }
+
+  /** A chat message arrived from the server (ours or our friend's). */
+  function onChat(msg) {
+    const mine = msg.by === online.me;
+    const empty = ch.log.querySelector('.chat-empty');
+    if (empty) empty.remove();
+    const li = document.createElement('li');
+    li.className = 'chat-msg' + (mine ? ' mine' : '') + (msg.kind === 'emoji' ? ' emoji' : '');
+    li.dataset.p = msg.by;
+    if (!mine && msg.kind === 'text') {
+      const who = document.createElement('span');
+      who.className = 'who'; who.textContent = msg.name;
+      li.appendChild(who);
+    }
+    li.appendChild(document.createTextNode(msg.text));    // always plain text, never HTML
+    li.setAttribute('aria-label', `${mine ? 'You' : msg.name}: ${msg.text}`);
+    ch.log.appendChild(li);
+    chat.count++;
+    while (ch.log.children.length > 120) ch.log.firstElementChild.remove();
+    scrollChat();
+
+    if (msg.kind === 'emoji') popEmoji(msg.by, msg.text);
+    if (!mine) {
+      if (!chatVisible()) {
+        chat.unread++;
+        if (msg.kind === 'text') cardBubble(msg.by, msg.text);
+      }
+      if (!prefs.chatMute) Sound.play('chat');
+      if (navigator.vibrate && phoneLayout() && !chatVisible()) { try { navigator.vibrate(30); } catch (e) { /* ignore */ } }
+    }
+    renderChatChrome();
+  }
+
+  function chatSys(text) {
+    if (mode !== 'online') return;
+    const empty = ch.log.querySelector('.chat-empty');
+    if (empty) empty.remove();
+    const li = document.createElement('li');
+    li.className = 'chat-sys'; li.textContent = text;
+    ch.log.appendChild(li); chat.count++;
+    scrollChat();
+  }
+  function clearChat() { ch.log.innerHTML = ''; chat.count = 0; chat.unread = 0; }
+  function scrollChat() { ch.log.scrollTop = ch.log.scrollHeight; }
+
+  /** Emoji bubble that floats up from the sender's pawn. */
+  function popEmoji(p, e) {
+    const pos = pawns[p];
+    if (!pos) return;
+    const node = document.createElement('div');
+    node.className = 'emoji-pop';
+    node.textContent = e;
+    node.style.left = pos.style.left; node.style.top = pos.style.top;
+    el.grid.appendChild(node);
+    setTimeout(() => node.remove(), 2700);
+  }
+  /** Short preview of a text message next to the sender's card, for when the chat is closed. */
+  function cardBubble(p, text) {
+    const card = el.cards[p];
+    card.querySelector('.card-bubble')?.remove();
+    const b = document.createElement('div');
+    b.className = 'card-bubble';
+    b.textContent = text;
+    card.appendChild(b);
+    setTimeout(() => b.remove(), 3500);
   }
 
   /* ============================================================= scoreboard */
@@ -1069,7 +1235,7 @@
   window.__corridors = {
     get game() { return game; }, get mode() { return mode; }, get level() { return level; },
     get aiThinking() { return aiThinking; }, get finished() { return finished; },
-    get online() { return online; },
+    get online() { return online; }, get chat() { return chat; },
     act, undo, newGame, setTool, startGame,
   };
 })();
