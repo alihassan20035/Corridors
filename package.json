@@ -1,0 +1,14 @@
+{
+  "name": "corridors",
+  "version": "1.1.0",
+  "description": "Corridors: Quoridor-style strategy game with AI, local and online multiplayer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/rules.test.js && node tests/online.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
