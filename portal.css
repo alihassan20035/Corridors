@@ -1,0 +1,101 @@
+/* ==========================================================================
+   portal.css — Wood Games hub
+   ========================================================================== */
+:root {
+  --table: #d8dfd5; --table-deep: #c7d0c3; --panel: #f7f8f3; --panel-2: #eef1ea;
+  --ink: #1d2a23; --ink-soft: #56645b; --line: #b9c4b6; --focus: #1d2a23;
+  --birch: #f2e7d1; --birch-hi: #fbf5e8; --birch-edge: #e0cfae; --groove: #b49a70;
+  --frame: #8a6c46; --frame-dark: #6b5133; --x: #d62839; --o: #1d63d8;
+  --shadow: 0 1px 2px rgb(29 42 35 / .12), 0 10px 28px rgb(29 42 35 / .14);
+  --font-display: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Segoe UI Variable Display", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius: 16px; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --table: #171c19; --table-deep: #111512; --panel: #232a26; --panel-2: #2b332e;
+    --ink: #e9eee8; --ink-soft: #a3b0a7; --line: #3b463f; --focus: #e9eee8;
+    --birch: #e4d6b9; --birch-hi: #efe4cc; --birch-edge: #cdb98f; --groove: #8a7250;
+    --frame: #5e472d; --frame-dark: #46341f;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 30px rgb(0 0 0 / .4); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --table: #171c19; --table-deep: #111512; --panel: #232a26; --panel-2: #2b332e;
+  --ink: #e9eee8; --ink-soft: #a3b0a7; --line: #3b463f; --focus: #e9eee8;
+  --birch: #e4d6b9; --birch-hi: #efe4cc; --birch-edge: #cdb98f; --groove: #8a7250;
+  --frame: #5e472d; --frame-dark: #46341f;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 30px rgb(0 0 0 / .4); color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; background: var(--table);
+  background-image: radial-gradient(130% 100% at 50% 0%, transparent 50%, var(--table-deep) 100%);
+  background-attachment: fixed; color: var(--ink); font: 16px/1.6 var(--font-body);
+  -webkit-tap-highlight-color: transparent;
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 10px; }
+
+.site-head { max-width: 1040px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 18px 0 6px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(145deg, var(--frame), var(--frame-dark)); position: relative; box-shadow: var(--shadow); }
+.brand-mark::before { content: ""; position: absolute; inset: 5px; border-radius: 4px; background: repeating-linear-gradient(90deg, var(--birch) 0 4px, var(--groove) 4px 5px), repeating-linear-gradient(0deg, transparent 0 4px, var(--groove) 4px 5px); }
+.brand-name { font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; letter-spacing: -.01em; }
+.icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.icon-btn:hover { background: var(--panel-2); }
+.icon-btn svg { width: 20px; height: 20px; }
+.icon-btn .ico-sun { display: none; }
+:root[data-resolved="dark"] .icon-btn .ico-sun { display: block; }
+:root[data-resolved="dark"] .icon-btn .ico-moon { display: none; }
+
+.hub { max-width: 1040px; margin: 0 auto; padding-bottom: 48px; }
+.hero { padding: clamp(28px, 7vw, 64px) 0 clamp(22px, 4vw, 38px); max-width: 40ch; }
+.hero h1 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.025em; font-size: clamp(2.6rem, 8vw, 4.4rem); line-height: 1; margin: 0 0 14px; }
+.hero p { margin: 0; color: var(--ink-soft); font-size: clamp(1rem, 2.4vw, 1.2rem); }
+
+.game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 20px; }
+.game-card { display: flex; flex-direction: column; background: var(--panel); border: 1.5px solid var(--line); border-radius: 20px; overflow: hidden; text-decoration: none; color: inherit; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+a.game-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--frame); }
+a.game-card:active { transform: translateY(-1px); }
+.game-card.soon { opacity: .72; }
+
+.card-board { aspect-ratio: 16 / 10; padding: 22px; background: linear-gradient(160deg, var(--frame), var(--frame-dark)); display: grid; place-items: center; }
+.card-board .mini { width: min(74%, 200px); }
+.card-board.placeholder { background: repeating-linear-gradient(45deg, var(--panel-2) 0 12px, var(--panel) 12px 24px); }
+.card-board.placeholder span { font-family: var(--font-display); font-size: 3rem; font-weight: 800; color: var(--ink-soft); }
+
+.card-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.card-body h2 { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; margin: 0; letter-spacing: -.01em; }
+.card-body p { margin: 0; color: var(--ink-soft); font-size: .96rem; flex: 1; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.tag { font-size: .76rem; font-weight: 600; color: var(--ink-soft); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+.play-cue { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-weight: 700; color: var(--ink); }
+.play-cue svg { width: 18px; height: 18px; }
+.play-cue.muted { color: var(--ink-soft); }
+
+.site-foot { margin-top: 36px; text-align: center; color: var(--ink-soft); font-size: .9rem; }
+
+/* Mini boards drawn with CSS */
+.mini { display: grid; gap: 7%; aspect-ratio: 1; background: var(--groove); border-radius: 10px; padding: 7%; box-shadow: inset 0 2px 6px rgb(0 0 0 / .35); }
+.mini .sq { background: linear-gradient(160deg, var(--birch-hi), var(--birch) 55%, var(--birch-edge)); border-radius: 12%; box-shadow: 0 1px 0 rgb(255 255 255 / .35) inset, 0 1.5px 2px rgb(0 0 0 / .22); position: relative; display: grid; place-items: center; }
+.mini.c9 { grid-template-columns: repeat(9, 1fr); gap: 4%; padding: 4%; }
+.mini.c3 { grid-template-columns: repeat(3, 1fr); }
+.pawn { width: 62%; height: 62%; border-radius: 50%; }
+.pawn.x { background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--x) 25%, #fff), var(--x) 60%, color-mix(in srgb, var(--x) 65%, #000)); box-shadow: 0 2px 3px rgb(0 0 0 / .3); }
+.pawn.o { background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--o) 25%, #fff), var(--o) 60%, color-mix(in srgb, var(--o) 65%, #000)); box-shadow: 0 2px 3px rgb(0 0 0 / .3); }
+.wll { position: absolute; border-radius: 3px; background: var(--x); box-shadow: 0 2px 3px rgb(0 0 0 / .35); z-index: 2; }
+.tx, .to { width: 56%; height: 56%; position: relative; }
+.tx::before, .tx::after { content: ""; position: absolute; inset: 8% 44%; background: var(--x); border-radius: 3px; }
+.tx::before { transform: rotate(45deg); } .tx::after { transform: rotate(-45deg); }
+.to { border-radius: 50%; border: 0.18em solid var(--o); }
+
+@media (max-width: 460px) {
+  .game-grid { grid-template-columns: 1fr; }
+  .card-board { aspect-ratio: 16 / 9; padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

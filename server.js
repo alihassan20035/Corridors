@@ -23,7 +23,16 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const { GameState } = require('./game.js');
+const { GameState } = require('./games/corridors/game.js');
+const { TTTState } = require('./games/tic-tac-toe/game.js');
+
+// Online rooms work for either game. The room remembers which one it is and
+// keeps a matching rules engine, so the server can validate every move.
+const GAMES = {
+  corridors: { make: () => new GameState(), names: ['Red', 'Blue'] },
+  tictactoe: { make: (opts) => new TTTState(opts && opts.size === 5 ? 5 : 3), names: ['X', 'O'] },
+};
+const makeEngine = (type, opts) => GAMES[type].make(opts);
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -38,32 +47,44 @@ const CHAT_WINDOW_MS = 5000;           // …in any 5-second window
 const EMOJIS = new Set(['👍', '😂', '😮', '😡', '🔥', '❤️', '👏', '😎']);
 
 /* ------------------------------------------------------------ static files */
-// Only these files are public. server.js, package.json, node_modules and
-// tests are never served.
-const PUBLIC_FILES = new Set(['index.html', 'style.css', 'script.js', 'game.js', 'ai.js', 'online.js']);
+// Serves the portal and both games from the project folder. Sensitive files
+// (this server, dependencies, tests, configs) are never served, and path
+// traversal outside the project is refused.
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml',
-  '.wav': 'audio/wav', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.wav': 'audio/wav', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
 };
+const BLOCKED = new Set(['server.js', 'package.json', 'package-lock.json', '.gitignore']);
+function isPublic(rel) {
+  if (!rel) return false;
+  if (rel.includes('..')) return false;
+  if (BLOCKED.has(rel)) return false;
+  if (rel === 'portal.js' || rel === 'favicon.svg') return true;
+  const top = rel.split('/')[0];
+  if (top === 'node_modules' || top === 'tests' || top.startsWith('.')) return false;
+  if (rel.endsWith('.md')) return false;
+  return Object.prototype.hasOwnProperty.call(TYPES, path.extname(rel));
+}
 
 function serveStatic(req, res) {
   let urlPath;
   try { urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
   catch (e) { res.writeHead(400); return res.end('Bad request'); }
-  if (urlPath === '/') urlPath = '/index.html';
   if (urlPath === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
 
+  if (urlPath === '/' || urlPath.endsWith('/')) urlPath += 'index.html';
   const rel = path.posix.normalize(urlPath).replace(/^\/+/, '');
-  const allowed = PUBLIC_FILES.has(rel) || (/^assets\/[\w\-./]+$/.test(rel) && !rel.includes('..'));
-  if (!allowed) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
+  if (!isPublic(rel)) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
 
   const file = path.join(ROOT, rel);
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(404); return res.end('Not found'); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': rel.startsWith('assets/') ? 'public, max-age=86400' : 'no-cache',
+      'Cache-Control': rel.includes('/assets/') ? 'public, max-age=86400' : 'no-cache',
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(data);
@@ -77,9 +98,11 @@ const server = http.createServer(serveStatic);
 const rooms = new Map();
 
 class Room {
-  constructor(id) {
+  constructor(id, gameType, opts) {
     this.id = id;
-    this.game = new GameState();
+    this.gameType = gameType;
+    this.opts = opts || {};
+    this.game = makeEngine(gameType, this.opts);
     this.seats = [null, null];      // { token, name, ws, connected, dropTimer }
     this.startedAt = 0;             // set when the second player joins
     this.rematch = [false, false];
@@ -87,11 +110,11 @@ class Room {
     this.emptyTimer = setTimeout(() => this.closeIfUnused(), EMPTY_ROOM_MS);
   }
 
-  names() { return this.seats.map((s, i) => (s ? s.name : (i === 0 ? 'Red' : 'Blue'))); }
+  names() { const d = GAMES[this.gameType].names; return this.seats.map((s, i) => (s ? s.name : d[i])); }
 
   stateFor(seat) {
     return {
-      t: 'state', room: this.id, you: seat,
+      t: 'state', room: this.id, you: seat, game: this.gameType,
       names: this.names(),
       connected: this.seats.map(s => !!(s && s.connected)),
       ready: !!(this.seats[0] && this.seats[1]),
@@ -160,17 +183,19 @@ wss.on('connection', (ws) => {
     switch (msg.t) {
       case 'create': {
         leaveCurrent(ws);
+        const gameType = GAMES[msg.game] ? msg.game : 'corridors';
+        const opts = gameType === 'tictactoe' ? { size: msg.size === 5 ? 5 : 3 } : {};
         if (rooms.size >= MAX_ROOMS) return fail('busy', 'The server is full right now. Try again in a few minutes.');
         const id = newRoomId();
         if (!id) return fail('busy', 'Couldn’t make a room code. Try again.');
-        const room = new Room(id);
+        const room = new Room(id, gameType, opts);
         rooms.set(id, room);
         const token = crypto.randomUUID();
-        room.seats[0] = { token, name: cleanName(msg.name, 'Red'), ws, connected: true, dropTimer: null };
+        room.seats[0] = { token, name: cleanName(msg.name, GAMES[gameType].names[0]), ws, connected: true, dropTimer: null };
         ws.room = room; ws.seat = 0;
-        reply({ t: 'created', room: id, token, you: 0 });
+        reply({ t: 'created', room: id, token, you: 0, game: gameType });
         room.send(0, room.stateFor(0));
-        log(`room ${id} created`);
+        log(`room ${id} created (${gameType})`);
         break;
       }
 
@@ -179,15 +204,19 @@ wss.on('connection', (ws) => {
         if (!/^\d{5}$/.test(id)) return fail('code', 'Room codes are 5 digits.');
         const room = rooms.get(id);
         if (!room) return fail('missing', `No game with code ${id}. Check the number with your friend.`);
+        if (msg.game && GAMES[msg.game] && room.gameType !== msg.game) {
+          const nice = { corridors: 'Corridors', tictactoe: 'Tic-Tac-Toe' };
+          return fail('wrong-game', `Code ${id} is a ${nice[room.gameType]} room. Open ${nice[room.gameType]} to join it.`);
+        }
         if (room.seats[1]) return fail('full', `Room ${id} already has two players.`);
         if (room.seats[0] && room.seats[0].ws === ws) return fail('self', 'You created this room. Share the code with your friend.');
         leaveCurrent(ws);
         const token = crypto.randomUUID();
-        room.seats[1] = { token, name: cleanName(msg.name, 'Blue'), ws, connected: true, dropTimer: null };
+        room.seats[1] = { token, name: cleanName(msg.name, GAMES[room.gameType].names[1]), ws, connected: true, dropTimer: null };
         ws.room = room; ws.seat = 1;
         clearTimeout(room.emptyTimer);
         room.startedAt = Date.now();
-        reply({ t: 'joined', room: id, token, you: 1 });
+        reply({ t: 'joined', room: id, token, you: 1, game: room.gameType });
         room.syncAll();
         room.send(0, { t: 'notice', kind: 'joined', name: room.seats[1].name });
         log(`room ${id} joined`);
@@ -223,11 +252,19 @@ wss.on('connection', (ws) => {
         if (g.winner !== -1) return fail('over', 'This game is over.');
         if (g.turn !== ws.seat) return fail('turn', 'It’s not your turn.');
         const a = msg.action || {};
-        const action = a.type === 'move'
-          ? { type: 'move', r: a.r | 0, c: a.c | 0 }
-          : { type: 'wall', r: a.r | 0, c: a.c | 0, o: a.o === 'v' ? 'v' : 'h' };
-        if (a.type !== 'move' && a.type !== 'wall') return fail('bad', 'Unknown action.');
-        if (!g.apply(action)) {
+        let action, ok;
+        if (room.gameType === 'tictactoe') {
+          if (a.type !== 'place') return fail('bad', 'Unknown action.');
+          action = { type: 'place', i: a.i | 0 };
+          ok = g.play(action.i);
+        } else {
+          if (a.type !== 'move' && a.type !== 'wall') return fail('bad', 'Unknown action.');
+          action = a.type === 'move'
+            ? { type: 'move', r: a.r | 0, c: a.c | 0 }
+            : { type: 'wall', r: a.r | 0, c: a.c | 0, o: a.o === 'v' ? 'v' : 'h' };
+          ok = g.apply(action);
+        }
+        if (!ok) {
           // Tell the sender the truth so a desynced page corrects itself.
           room.send(ws.seat, room.stateFor(ws.seat));
           return fail('illegal', 'That move isn’t allowed.');
@@ -242,7 +279,7 @@ wss.on('connection', (ws) => {
         if (!room || room.game.winner === -1) return;
         room.rematch[ws.seat] = true;
         if (room.rematch[0] && room.rematch[1]) {
-          room.game = new GameState();
+          room.game = makeEngine(room.gameType, room.opts);
           room.rematch = [false, false];
           room.startedAt = Date.now();
           room.syncAll();

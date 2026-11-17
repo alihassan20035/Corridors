@@ -1,6 +1,6 @@
 // Run with: node tests/selfplay.js [games]
-const { GameState } = require('../game.js');
-const AI = require('../ai.js');
+const { GameState } = require('../games/corridors/game.js');
+const AI = require('../games/corridors/ai.js');
 const games = +process.argv[2] || 6;
 function play(redLvl, blueLvl) {
   const g = new GameState(); let maxT = 0, plies = 0; const hist = [[], []];

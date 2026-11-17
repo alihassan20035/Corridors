@@ -1,6 +1,6 @@
 // Run with: node tests/rules.test.js
-const { GameState } = require('../game.js');
-const AI = require('../ai.js');
+const { GameState } = require('../games/corridors/game.js');
+const AI = require('../games/corridors/ai.js');
 let pass = 0, fail = 0;
 function t(name, cond) { if (cond) pass++; else { fail++; console.log('FAIL:', name); } }
 const set = (moves) => moves.map(m => `${m.r},${m.c}${m.kind?':'+m.kind[0]:''}`).sort().join(' ');

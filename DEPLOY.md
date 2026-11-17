@@ -1,6 +1,6 @@
-# Deploy Corridors on AWS EC2
+# Deploy Wood Games on AWS EC2
 
-This puts the game online so you and a friend can play from different phones or computers. One player creates a room and gets a 5-digit code, the other joins with it, and every move shows up on both screens instantly.
+This puts the whole portal (both games) online. Corridors can then be played with a friend from different phones or computers; the other games work too. One player creates a room and gets a 5-digit code, the other joins with it, and every move shows up on both screens instantly.
 
 You need: an AWS account, the `corridors.zip` file, and a terminal (Windows: PowerShell or Git Bash).
 
@@ -47,8 +47,8 @@ sudo apt install -y unzip nginx
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
-unzip corridors.zip
-cd corridors
+unzip wood-games.zip
+cd game-portal
 npm install --omit=dev
 ```
 
@@ -114,9 +114,10 @@ sudo systemctl reload nginx
 
 ## 6. Play
 
-Open `http://13.250.10.20` (your IP) on your phone or computer.
+Open `http://13.250.10.20` (your IP) on your phone or computer. You’ll see the portal — pick a game.
 
-1. Tap **Play a friend online**, type your name, tap **Create a room**.
+For Corridors online:
+1. Open Corridors, tap **Play a friend online**, type your name, tap **Create a room**.
 2. Send the 5-digit code to your friend (WhatsApp, etc.).
 3. Your friend opens the same address, taps **Play a friend online**, enters the code and taps **Join**.
 4. You are Red and move first. Each move appears on the other screen right away.
